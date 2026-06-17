@@ -1,0 +1,7 @@
+# Runtime directories (created by git-sync and on-sync.sh)
+output/
+repo/
+
+# Python cache
+__pycache__/
+*.pyc
