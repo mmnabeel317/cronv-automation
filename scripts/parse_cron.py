@@ -3,14 +3,19 @@
 
 Reads a generated Prow periodics YAML file and outputs
 a crontab-format file grouped by OCP version, suitable for piping into cronv.
+Optionally writes structured JSON for the web visualization.
 
 Usage:
     python3 parse_cron.py /path/to/synced/release/repo > crontab.txt
+    python3 parse_cron.py /path/to/repo --json-output crontab.json > crontab.txt
 """
 
-import sys
+import argparse
+import json
 import os
+import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 
 try:
     import yaml
@@ -53,13 +58,27 @@ def shorten_name(name):
     return name
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <repo-root-path>", file=sys.stderr)
-        sys.exit(1)
+def version_sort_key(version):
+    """Sort version strings numerically (e.g., '4.22' -> (4, 22), '5.0' -> (5, 0))."""
+    try:
+        parts = version.split(".")
+        return tuple(int(p) for p in parts)
+    except (ValueError, AttributeError):
+        return (0, 0)
 
-    repo_root = sys.argv[1]
-    yaml_path = os.path.join(repo_root, PERIODICS_RELPATH)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Parse Prow periodics YAML into crontab format"
+    )
+    parser.add_argument("repo_root", help="Path to the synced openshift/release repo root")
+    parser.add_argument(
+        "--json-output",
+        help="Write structured JSON to this file path (for the web UI)",
+    )
+    args = parser.parse_args()
+
+    yaml_path = os.path.join(args.repo_root, PERIODICS_RELPATH)
 
     if not os.path.isfile(yaml_path):
         print(f"ERROR: Periodics file not found: {yaml_path}", file=sys.stderr)
@@ -73,6 +92,7 @@ def main():
         sys.exit(1)
 
     jobs_by_version = defaultdict(list)
+    all_jobs = []
 
     for job in data["periodics"]:
         cron = job.get("cron")
@@ -84,13 +104,21 @@ def main():
         version = extract_version(job)
         short_name = shorten_name(name)
         jobs_by_version[version].append((cron, short_name))
+        all_jobs.append({
+            "name": name,
+            "short_name": short_name,
+            "cron": cron,
+            "version": version,
+        })
 
     if not jobs_by_version:
         print("WARNING: No cron jobs found in periodics file", file=sys.stderr)
         sys.exit(0)
 
     total = 0
-    for version in sorted(jobs_by_version.keys(), key=version_sort_key, reverse=True):
+    sorted_versions = sorted(jobs_by_version.keys(), key=version_sort_key, reverse=True)
+
+    for version in sorted_versions:
         jobs = sorted(jobs_by_version[version], key=lambda j: j[1])
         label = f"OCP {version}" if version != "other" else "Other"
         print(f"\n# {label} Jobs")
@@ -100,14 +128,27 @@ def main():
 
     print(f"\nParsed {total} cron jobs", file=sys.stderr)
 
+    if args.json_output:
+        sorted_jobs = []
+        for version in sorted_versions:
+            version_jobs = sorted(
+                [j for j in all_jobs if j["version"] == version],
+                key=lambda j: j["short_name"],
+            )
+            sorted_jobs.extend(version_jobs)
 
-def version_sort_key(version):
-    """Sort version strings numerically (e.g., '4.22' -> (4, 22), '5.0' -> (5, 0))."""
-    try:
-        parts = version.split(".")
-        return tuple(int(p) for p in parts)
-    except (ValueError, AttributeError):
-        return (0, 0)
+        json_data = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "total_jobs": total,
+            "versions": sorted_versions,
+            "jobs": sorted_jobs,
+        }
+
+        os.makedirs(os.path.dirname(os.path.abspath(args.json_output)), exist_ok=True)
+        with open(args.json_output, "w") as f:
+            json.dump(json_data, f, indent=2)
+
+        print(f"JSON written to {args.json_output}", file=sys.stderr)
 
 
 if __name__ == "__main__":
