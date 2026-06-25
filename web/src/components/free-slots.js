@@ -1,7 +1,13 @@
 export function createFreeSlots(container) {
   let expandedIdx = null;
+  let lastFreeSlots = null;
 
-  function render(freeSlots) {
+  function render(freeSlots, timezone) {
+    if (freeSlots !== lastFreeSlots) {
+      expandedIdx = null;
+      lastFreeSlots = freeSlots;
+    }
+    const useLocal = timezone !== 'UTC';
     if (!freeSlots || freeSlots.length === 0) {
       container.innerHTML = `<div class="free-slots-panel">
         <div class="free-header">
@@ -42,7 +48,7 @@ export function createFreeSlots(container) {
         html += `<div class="free-card-details">`;
         for (const occ of slot.occurrences) {
           html += `<div class="free-occ">
-            <span class="free-occ-time">${formatOccTime(occ.start)} – ${formatOccTime(occ.end)}</span>
+            <span class="free-occ-time">${formatOccTime(occ.start, useLocal)} – ${formatOccTime(occ.end, useLocal)}</span>
             <span class="free-occ-dur">${Math.round(occ.durationHrs)}h</span>
           </div>`;
         }
@@ -59,7 +65,7 @@ export function createFreeSlots(container) {
       card.querySelector('.free-card-header').onclick = () => {
         const idx = parseInt(card.dataset.idx);
         expandedIdx = expandedIdx === idx ? null : idx;
-        render(freeSlots);
+        render(freeSlots, timezone);
       };
     });
   }
@@ -67,9 +73,9 @@ export function createFreeSlots(container) {
   return { update: render };
 }
 
-function formatOccTime(date) {
+function formatOccTime(date, useLocal) {
   return date.toLocaleDateString('en-US', {
-    timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric',
+    timeZone: useLocal ? undefined : 'UTC', weekday: 'short', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
 }

@@ -49,9 +49,9 @@ function computeDerived(state) {
   } = computeConcurrency(runTimes, slots, slotMs);
 
   const conflicts = findConflicts(
-    fineCon, fineJobs, fineMs, rangeStart, state.thresholds.danger,
+    fineCon, fineJobs, fineMs, rangeStart, state.thresholds.danger, state.timezone,
   );
-  const freeSlots = findFreeSlots(fineCon, fineMs, rangeStart, 1);
+  const freeSlots = findFreeSlots(fineCon, fineMs, rangeStart, 1, state.timezone);
 
   return {
     start, end, displayJobs, filteredJobs: filtered,
@@ -62,18 +62,27 @@ function computeDerived(state) {
   };
 }
 
+let isFirstLoad = true;
+
 async function loadData() {
   try {
-    const resp = await fetch(DATA_URL);
+    const resp = await fetch(`${DATA_URL}?t=${Date.now()}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    store.set({
+
+    const update = {
       jobs: data.jobs || [],
       versions: data.versions || [],
       generatedAt: data.generated_at || '',
       totalJobs: data.total_jobs || 0,
-      activeVersions: new Set(data.versions || []),
-    });
+    };
+
+    if (isFirstLoad) {
+      update.activeVersions = new Set(data.versions || []);
+      isFirstLoad = false;
+    }
+
+    store.set(update);
     return true;
   } catch (err) {
     console.error('Failed to load schedule data:', err);
@@ -107,15 +116,15 @@ async function init() {
   const timeline = createTimeline(document.getElementById('content-scroll'), store, derived);
 
   sidebar.init();
-  conflictsPanel.update(derived.conflicts, state.thresholds);
-  freeSlotsPanel.update(derived.freeSlots);
+  conflictsPanel.update(derived.conflicts, state.thresholds, state.timezone);
+  freeSlotsPanel.update(derived.freeSlots, state.timezone);
   timeline.init();
 
   store.subscribe((newState) => {
     derived = computeDerived(newState);
     sidebar.update(newState, derived);
-    conflictsPanel.update(derived.conflicts, newState.thresholds);
-    freeSlotsPanel.update(derived.freeSlots);
+    conflictsPanel.update(derived.conflicts, newState.thresholds, newState.timezone);
+    freeSlotsPanel.update(derived.freeSlots, newState.timezone);
     timeline.update(newState, derived);
   });
 
@@ -129,9 +138,36 @@ async function init() {
     }
   });
 
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => store.set({}), 200);
+  });
+
   setInterval(async () => {
     await loadData();
   }, REFRESH_INTERVAL);
+
+  setInterval(() => {
+    const nowLine = document.querySelector('.now-line');
+    if (!nowLine) return;
+    const st = store.get();
+    const { start, end } = getDateRange(st.dateRange, st.customStart, st.customEnd);
+    const { slots } = computeTimeSlots(start, end);
+    const el = document.getElementById('content-scroll');
+    const nameColW = 360;
+    const slotW = Math.max(28, (el.clientWidth - nameColW) / slots.length);
+    const totalSlotsW = slots.length * slotW;
+    const now = Date.now();
+    const s = start.getTime();
+    const e = end.getTime();
+    if (now < s || now > e) {
+      nowLine.style.display = 'none';
+    } else {
+      nowLine.style.display = '';
+      nowLine.style.left = `${nameColW + ((now - s) / (e - s)) * totalSlotsW}px`;
+    }
+  }, 60_000);
 }
 
 init();

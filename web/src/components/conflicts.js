@@ -4,12 +4,21 @@ export function createConflicts(banner, store) {
   let expanded = false;
   let expandedRow = null;
   let page = 0;
+  let lastConflicts = null;
 
-  function render(conflicts, thresholds) {
+  function render(conflicts, thresholds, timezone) {
+    if (conflicts !== lastConflicts) {
+      page = 0;
+      expandedRow = null;
+      lastConflicts = conflicts;
+    }
+    const useLocal = timezone !== 'UTC';
     if (!conflicts || conflicts.length === 0) {
       banner.innerHTML = `<div class="conflicts-banner safe">
-        <span class="conflicts-icon">&#10003;</span>
-        <span>No scheduling conflicts detected</span>
+        <div class="conflicts-summary">
+          <span class="conflicts-icon">&#10003;</span>
+          <span>No scheduling conflicts detected</span>
+        </div>
       </div>`;
       return;
     }
@@ -75,7 +84,7 @@ export function createConflicts(banner, store) {
           if (c.occurrences && c.occurrences.length > 0) {
             html += `<div class="ct-occ-header">Occurrences:</div>`;
             for (const occ of c.occurrences.slice(0, 5)) {
-              html += `<div class="ct-occ-item">${formatOccTime(occ.start)} – ${formatOccTime(occ.end)} (peak: ${occ.peak})</div>`;
+              html += `<div class="ct-occ-item">${formatOccTime(occ.start, useLocal)} – ${formatOccTime(occ.end, useLocal)} (peak: ${occ.peak})</div>`;
             }
             if (c.occurrences.length > 5) {
               html += `<div class="ct-occ-more">+${c.occurrences.length - 5} more</div>`;
@@ -99,30 +108,27 @@ export function createConflicts(banner, store) {
     html += `</div>`;
     banner.innerHTML = html;
 
-    // Toggle expand/collapse
     banner.querySelector('#conflicts-toggle')?.addEventListener('click', () => {
       expanded = !expanded;
       if (!expanded) { expandedRow = null; page = 0; }
-      render(conflicts, thresholds);
+      render(conflicts, thresholds, timezone);
     });
 
-    // Row expand
     banner.querySelectorAll('.conflicts-row').forEach(row => {
       row.addEventListener('click', () => {
         const rank = parseInt(row.dataset.rank);
         expandedRow = expandedRow === rank ? null : rank;
-        render(conflicts, thresholds);
+        render(conflicts, thresholds, timezone);
       });
     });
 
-    // Pagination
     banner.querySelectorAll('.ct-page-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (btn.dataset.dir === 'prev' && page > 0) page--;
         else if (btn.dataset.dir === 'next') page++;
         expandedRow = null;
-        render(conflicts, thresholds);
+        render(conflicts, thresholds, timezone);
       });
     });
   }
@@ -130,9 +136,9 @@ export function createConflicts(banner, store) {
   return { update: render };
 }
 
-function formatOccTime(date) {
+function formatOccTime(date, useLocal) {
   return date.toLocaleDateString('en-US', {
-    timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric',
+    timeZone: useLocal ? undefined : 'UTC', weekday: 'short', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
 }

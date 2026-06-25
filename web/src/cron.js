@@ -124,7 +124,15 @@ export function getConcurrencyLevel(count, thresholds) {
 
 // --- Conflict detection on fine-grained hourly data, grouped by recurring pattern ---
 
-export function findConflicts(fineCon, fineJobs, fineMs, rangeStart, threshold) {
+export function findConflicts(fineCon, fineJobs, fineMs, rangeStart, threshold, timezone = 'UTC') {
+  const useLocal = timezone !== 'UTC';
+  const tzOpts = useLocal ? {} : { timeZone: 'UTC' };
+  const tzSuffix = useLocal ? '' : ' UTC';
+  const _day = (d) => useLocal ? d.getDay() : d.getUTCDay();
+  const _h = (d) => useLocal ? d.getHours() : d.getUTCHours();
+  const _m = (d) => useLocal ? d.getMinutes() : d.getUTCMinutes();
+  const fmtHM = (d) => `${String(_h(d)).padStart(2, '0')}:${String(_m(d)).padStart(2, '0')}`;
+
   const rawWindows = [];
   let current = null;
 
@@ -159,10 +167,8 @@ export function findConflicts(fineCon, fineJobs, fineMs, rangeStart, threshold) 
   for (const w of rawWindows) {
     const s = new Date(w.startMs);
     const e = new Date(w.endMs);
-    const dayOfWeek = s.getUTCDay();
-    const startHour = s.getUTCHours();
-    const endHour = e.getUTCHours() || 24;
-    const key = `${dayOfWeek}-${startHour}-${endHour}`;
+    const dayOfWeek = _day(s);
+    const key = `${dayOfWeek}-${_h(s)}:${_m(s)}-${_h(e)}:${_m(e)}`;
 
     if (patternMap.has(key)) {
       const group = patternMap.get(key);
@@ -172,8 +178,6 @@ export function findConflicts(fineCon, fineJobs, fineMs, rangeStart, threshold) 
     } else {
       patternMap.set(key, {
         dayOfWeek,
-        startHour,
-        endHour,
         peak: w.peak,
         allJobs: new Set(w.jobs),
         occurrences: [{ start: s, end: e, peak: w.peak, jobs: w.jobs }],
@@ -185,17 +189,18 @@ export function findConflicts(fineCon, fineJobs, fineMs, rangeStart, threshold) 
   for (const [, g] of patternMap) {
     const isRecurring = g.occurrences.length > 1;
     const dayLabel = DAY_NAMES[g.dayOfWeek];
-    const hourRange = `${String(g.startHour).padStart(2, '0')}:00 – ${String(g.endHour === 24 ? 0 : g.endHour).padStart(2, '0')}:00`;
+    const first = g.occurrences[0];
+    const timeRange = `${fmtHM(first.start)} – ${fmtHM(first.end)}`;
 
     grouped.push({
       label: isRecurring
-        ? `${dayLabel}s, ${hourRange} UTC`
-        : `${g.occurrences[0].start.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}, ${hourRange} UTC`,
+        ? `${dayLabel}s, ${timeRange}${tzSuffix}`
+        : `${first.start.toLocaleDateString('en-US', { ...tzOpts, weekday: 'short', month: 'short', day: 'numeric' })}, ${timeRange}${tzSuffix}`,
       peak: g.peak,
       frequency: g.occurrences.length,
       jobs: [...g.allJobs],
       occurrences: g.occurrences,
-      firstOccurrence: g.occurrences[0].start,
+      firstOccurrence: first.start,
     });
   }
 
@@ -205,7 +210,15 @@ export function findConflicts(fineCon, fineJobs, fineMs, rangeStart, threshold) 
 
 // --- Free slot discovery on fine-grained hourly data ---
 
-export function findFreeSlots(fineCon, fineMs, rangeStart, maxConcurrency = 1) {
+export function findFreeSlots(fineCon, fineMs, rangeStart, maxConcurrency = 1, timezone = 'UTC') {
+  const useLocal = timezone !== 'UTC';
+  const tzOpts = useLocal ? {} : { timeZone: 'UTC' };
+  const tzSuffix = useLocal ? '' : ' UTC';
+  const _day = (d) => useLocal ? d.getDay() : d.getUTCDay();
+  const _h = (d) => useLocal ? d.getHours() : d.getUTCHours();
+  const _m = (d) => useLocal ? d.getMinutes() : d.getUTCMinutes();
+  const fmtHM = (d) => `${String(_h(d)).padStart(2, '0')}:${String(_m(d)).padStart(2, '0')}`;
+
   const rawWindows = [];
   let current = null;
 
@@ -237,23 +250,22 @@ export function findFreeSlots(fineCon, fineMs, rangeStart, maxConcurrency = 1) {
     const endMs = rangeStart + w.endIdx * fineMs;
     const s = new Date(startMs);
     const e = new Date(endMs);
-    const dayOfWeek = s.getUTCDay();
-    const startHour = s.getUTCHours();
+    const dayOfWeek = _day(s);
     const durationHrs = (endMs - startMs) / HOUR;
 
     const spansDays = durationHrs >= 24;
     const key = spansDays
-      ? `multi-${dayOfWeek}-${startHour}`
-      : `${dayOfWeek}-${startHour}-${Math.round(durationHrs)}`;
+      ? `multi-${dayOfWeek}-${_h(s)}:${_m(s)}`
+      : `${dayOfWeek}-${_h(s)}:${_m(s)}-${Math.round(durationHrs)}`;
 
     if (patternMap.has(key)) {
       const group = patternMap.get(key);
       group.occurrences.push({ start: s, end: e, durationHrs, maxCon: w.maxSeen });
+      group.maxCon = Math.max(group.maxCon, w.maxSeen);
       group.totalHours += durationHrs;
     } else {
       patternMap.set(key, {
         dayOfWeek,
-        startHour,
         durationHrs,
         maxCon: w.maxSeen,
         occurrences: [{ start: s, end: e, durationHrs, maxCon: w.maxSeen }],
@@ -267,21 +279,18 @@ export function findFreeSlots(fineCon, fineMs, rangeStart, maxConcurrency = 1) {
     const isRecurring = g.occurrences.length > 1;
     const avgDuration = g.totalHours / g.occurrences.length;
     const dayLabel = DAY_NAMES[g.dayOfWeek];
-    const startLabel = `${String(g.startHour).padStart(2, '0')}:00`;
-    const endHour = (g.startHour + Math.round(avgDuration)) % 24;
-    const endLabel = `${String(endHour).padStart(2, '0')}:00`;
+    const first = g.occurrences[0];
 
     let label;
     if (avgDuration >= 24) {
-      const startDay = DAY_NAMES[g.dayOfWeek];
-      const endDay = DAY_NAMES[(g.dayOfWeek + Math.floor(avgDuration / 24)) % 7];
       label = isRecurring
-        ? `${startDay} ${startLabel} – ${endDay} ${endLabel} UTC`
-        : `${g.occurrences[0].start.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })} – ${g.occurrences[0].end.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })}`;
+        ? `${dayLabel} ${fmtHM(first.start)} – ${DAY_NAMES[_day(first.end)]} ${fmtHM(first.end)}${tzSuffix}`
+        : `${first.start.toLocaleDateString('en-US', { ...tzOpts, month: 'short', day: 'numeric' })} – ${first.end.toLocaleDateString('en-US', { ...tzOpts, month: 'short', day: 'numeric' })}`;
     } else {
+      const timeRange = `${fmtHM(first.start)} – ${fmtHM(first.end)}`;
       label = isRecurring
-        ? `${dayLabel}s, ${startLabel} – ${endLabel} UTC`
-        : `${g.occurrences[0].start.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })}, ${startLabel} – ${endLabel} UTC`;
+        ? `${dayLabel}s, ${timeRange}${tzSuffix}`
+        : `${first.start.toLocaleDateString('en-US', { ...tzOpts, weekday: 'short', month: 'short', day: 'numeric' })}, ${timeRange}${tzSuffix}`;
     }
 
     grouped.push({

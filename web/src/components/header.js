@@ -3,7 +3,6 @@ export function createHeader(container, store) {
     const age = state.generatedAt
       ? formatAge(new Date(state.generatedAt))
       : '—';
-    const tzLabel = state.timezone === 'UTC' ? 'UTC' : 'Local';
 
     container.innerHTML = `
       <div class="header-left">
@@ -13,21 +12,27 @@ export function createHeader(container, store) {
       </div>
       <div class="header-right">
         <span class="header-badge"><span class="dot"></span> Data: ${age}</span>
-        <button class="tz-toggle" title="Toggle timezone">${tzLabel}</button>
+        <div class="tz-segmented">
+          <button class="tz-option${state.timezone === 'UTC' ? ' active' : ''}" data-tz="UTC">UTC</button>
+          <button class="tz-option${state.timezone !== 'UTC' ? ' active' : ''}" data-tz="local">Local</button>
+        </div>
       </div>
     `;
 
-    container.querySelector('.tz-toggle').onclick = () => {
-      store.set({ timezone: state.timezone === 'UTC' ? 'local' : 'UTC' });
-    };
+    container.querySelectorAll('.tz-option').forEach(btn => {
+      btn.onclick = () => store.set({ timezone: btn.dataset.tz });
+    });
   }
 
   store.subscribe(render);
   render(store.get());
+
+  setInterval(() => render(store.get()), 60_000);
 }
 
 function formatAge(date) {
   const diffMs = Date.now() - date.getTime();
+  if (isNaN(diffMs)) return 'unknown';
   const mins = Math.floor(diffMs / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

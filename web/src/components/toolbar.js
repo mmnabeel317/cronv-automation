@@ -9,6 +9,10 @@ const DATE_RANGES = [
 
 export function createToolbar(container, store) {
   function render(state) {
+    const searchInput = container.querySelector('.search-box input');
+    const wasSearchFocused = searchInput && document.activeElement === searchInput;
+    const cursorPos = wasSearchFocused ? searchInput.selectionStart : null;
+
     const rangePills = DATE_RANGES.map(r =>
       `<button class="pill${state.dateRange === r.key ? ' active' : ''}" data-range="${r.key}">${r.label}</button>`
     ).join('');
@@ -69,6 +73,11 @@ export function createToolbar(container, store) {
     container.querySelector('.search-clear').onclick = () => {
       store.set({ searchQuery: '' });
     };
+
+    if (wasSearchFocused && input) {
+      input.focus();
+      if (cursorPos !== null) input.setSelectionRange(cursorPos, cursorPos);
+    }
   }
 
   store.subscribe(render);

@@ -114,17 +114,37 @@ body {
   background: var(--safe-color);
 }
 
-.tz-toggle {
-  background: var(--bg-surface);
+.tz-segmented {
+  display: flex;
   border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tz-option {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 4px 12px;
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: all 0.15s;
 }
-.tz-toggle:hover { border-color: var(--text-muted); }
+
+.tz-option:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+.tz-option.active {
+  background: var(--rh-red);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tz-option:hover:not(.active) {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
 
 /* ─── Toolbar ──────────────────────────────────────────── */
 
@@ -244,6 +264,11 @@ body {
 .version-toggle-all:hover { color: var(--text-secondary); }
 
 /* ─── Conflicts Banner ─────────────────────────────────── */
+
+#conflicts-banner,
+#free-slots-container {
+  flex-shrink: 0;
+}
 
 .conflicts-banner {
   border-bottom: 1px solid rgba(201, 25, 11, 0.3);
@@ -551,7 +576,7 @@ body {
 /* ─── Heatmap Tooltip ──────────────────────────────────── */
 
 .heatmap-tooltip {
-  position: absolute;
+  position: fixed;
   z-index: 30;
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);

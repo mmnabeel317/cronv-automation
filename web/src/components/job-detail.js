@@ -81,13 +81,11 @@ function positionPopover(el) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  let top = Math.min(el.offsetTop, vh - rect.height - 20);
-  let left = Math.min(el.offsetLeft, vw - rect.width - 20);
-  top = Math.max(20, top);
-  left = Math.max(20, left);
+  const top = Math.max(10, Math.min(vh / 2 - rect.height / 2, vh - rect.height - 10));
+  const left = Math.max(10, Math.min(vw / 2 - rect.width / 2, vw - rect.width - 10));
 
-  el.style.top = `${Math.min(vh / 2 - rect.height / 2, vh - rect.height - 10)}px`;
-  el.style.left = `${Math.min(vw / 2 - rect.width / 2, vw - rect.width - 10)}px`;
+  el.style.top = `${top}px`;
+  el.style.left = `${left}px`;
 }
 
 function escHtml(s) {

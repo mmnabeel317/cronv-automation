@@ -193,8 +193,9 @@ export function createTimeline(container, store, derived) {
           </div>
           <div class="tooltip-jobs">${jobListHtml || '<span class="tooltip-empty">No jobs</span>'}</div>${moreHtml}`;
         tooltip.classList.remove('hidden');
-        tooltip.style.left = `${NAME_COL_W + Math.min(x + 12, totalSlotsW - 260)}px`;
-        tooltip.style.top = '84px';
+        const heatRect = canvasWrap.getBoundingClientRect();
+        tooltip.style.left = `${Math.min(e.clientX + 12, window.innerWidth - 270)}px`;
+        tooltip.style.top = `${heatRect.bottom + 4}px`;
       });
 
       canvasWrap.addEventListener('mouseleave', () => {
@@ -259,7 +260,7 @@ export function createTimeline(container, store, derived) {
     if (scrollInner && colHighlight) {
       scrollInner.addEventListener('mousemove', (e) => {
         const rect = scrollInner.getBoundingClientRect();
-        const x = e.clientX - rect.left + container.scrollLeft;
+        const x = e.clientX - rect.left;
         const slotX = x - NAME_COL_W;
         if (slotX < 0 || slotX >= totalSlotsW) {
           colHighlight.classList.add('hidden');
@@ -282,8 +283,7 @@ export function createTimeline(container, store, derived) {
         colDateLabel.textContent = dateStr + (useLocal ? '' : ' UTC');
 
         const containerRect = container.getBoundingClientRect();
-        const slotScreenLeft = rect.left + (left - container.scrollLeft);
-        colDateLabel.style.left = `${slotScreenLeft}px`;
+        colDateLabel.style.left = `${rect.left + left}px`;
         colDateLabel.style.top = `${containerRect.top + 6}px`;
         colDateLabel.classList.remove('hidden');
       });
